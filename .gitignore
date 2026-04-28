@@ -3,3 +3,4 @@
 *.cfg
 ui/node_modules/
 ui/dist/
+package-lock.json
