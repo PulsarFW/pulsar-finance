@@ -12,9 +12,6 @@ jobs:
   create-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Install zip
-        run: sudo apt install zip
-
       - name: Get latest code
         uses: actions/checkout@v4
 
@@ -33,11 +30,9 @@ jobs:
 
       - name: Bundle files
         run: |
-          mkdir -p ./temp/pulsar-finance
-          cp ./{README.md,fxmanifest.lua} ./temp/pulsar-finance
-          cp -r ./{client,server,shared,ui} ./temp/pulsar-finance
-          rm -rf ./temp/pulsar-finance/ui/node_modules
-          cd ./temp && zip -r ../pulsar-finance.zip ./pulsar-finance
+          mkdir -p staging/pulsar-finance
+          rsync -a --exclude='.github' --exclude='node_modules' --exclude='staging' . staging/pulsar-finance/
+          cd staging && zip -r ../pulsar-finance.zip pulsar-finance/
 
       - name: Create release
         uses: softprops/action-gh-release@v2
