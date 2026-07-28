@@ -1,24 +1,24 @@
+local config = load(LoadResourceFile(GetCurrentResourceName(), "config/server.lua"))()
+
 AddEventHandler('Finance:Server:Startup', function()
-    exports["pulsar-core"]:RegisterServerCallback('Billing:DismissBill', function(source, data, cb)
+    plsr.Callbacks:RegisterServerCallback('Billing:DismissBill', function(source, data, cb)
         if data and data.bill then
-            local success = exports['pulsar-finance']:BillingDismiss(source, data.bill)
+            local success = plsr.Billing:Dismiss(source, data.bill)
             cb(success)
         else
             cb(false)
         end
     end)
 
-    exports["pulsar-core"]:RegisterServerCallback('Billing:AcceptBill', function(source, data, cb)
+    plsr.Callbacks:RegisterServerCallback('Billing:AcceptBill', function(source, data, cb)
         if data and data.bill then
-            local success = exports['pulsar-finance']:BillingAccept(source, data.bill, data.account)
+            local success = plsr.Billing:Accept(source, data.bill, data.account)
             cb(success)
             if data.notify then
                 if success then
-                    exports['pulsar-phone']:NotificationAdd(source, "Bill Payment Successful", false, os.time(),
-                        3000, "bank", {})
+                    plsr.Phone.Notification:Add(source, "Bill Payment Successful", false, os.time(), config.Notifications.billingPaymentMs, "bank", {})
                 else
-                    exports['pulsar-phone']:NotificationAdd(source, "Bill Payment Failed", false, os.time(), 3000,
-                        "bank", {})
+                    plsr.Phone.Notification:Add(source, "Bill Payment Failed", false, os.time(), config.Notifications.billingPaymentMs, "bank", {})
                 end
             end
         else
@@ -26,11 +26,9 @@ AddEventHandler('Finance:Server:Startup', function()
         end
     end)
 
-    exports["pulsar-core"]:RegisterServerCallback('Billing:CreateBill', function(source, data, cb)
+    plsr.Callbacks:RegisterServerCallback('Billing:CreateBill', function(source, data, cb)
         if data and data.fromAccount and data.target and data.description and data.amount then
-            local creationSuccess = exports['pulsar-finance']:BillingPlayerCreateOrganizationBill(source, data.target,
-                data.fromAccount,
-                data.amount, data.description)
+            local creationSuccess = plsr.Billing:PlayerCreateOrganizationBill(source, data.target, data.fromAccount, data.amount, data.description)
             cb(creationSuccess)
         end
     end)

@@ -1,311 +1,323 @@
-exports("LoansGetAllowedLoanAmount", function(stateId, type)
-	if not type then
-		type = "vehicle"
-	end
-	if _creditScoreConfig.allowedLoanMultipliers[type] then
-		local creditScore = GetCharacterCreditScore(stateId)
+local config = load(LoadResourceFile(GetCurrentResourceName(), "config/server.lua"))()
 
-		local creditMult = 0
-		for k, v in ipairs(_creditScoreConfig.allowedLoanMultipliers[type]) do
-			if creditScore >= v.value then
-				creditMult = v.multiplier
-			else
-				break
-			end
+local _loansTablesReady = false
+function EnsureLoansTables(callback)
+	if _loansTablesReady then
+		if callback then
+			callback()
 		end
-
-		return {
-			creditScore = creditScore,
-			maxBorrowable = creditScore * creditMult,
-			limit = creditScore > 420 and 3 or 2,
-		}
+		return
 	end
-end)
-
-exports("LoansGetDefaultInterestRate", function()
-	return _loanConfig.defaultInterestRate
-end)
-
-exports("LoansGetPlayerLoans", function(stateId, type)
-	local p = promise.new()
-	local currentTime = os.time()
-	local oneDayAgo = currentTime - (60 * 60 * 24 * 1)
-
-	exports.oxmysql:execute(
-		'SELECT * FROM loans WHERE SID = ? AND Type = ? AND (Remaining > 0 OR (Remaining = 0 AND LastPayment >= ?))',
-		{ stateId, type, oneDayAgo },
-		function(results)
-			if results then
-				for k, v in ipairs(results) do
-					if v.paymentHistory then
-						v.paymentHistory = json.decode(v.paymentHistory)
-					end
-					if v.terms then
-						v.terms = json.decode(v.terms)
+	plsr.Database:Query(
+		"CREATE TABLE IF NOT EXISTS `loans` (`id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, `sid` BIGINT UNSIGNED NOT NULL, `type` VARCHAR(20) NOT NULL, `asset_identifier` VARCHAR(191) NOT NULL, `defaulted` TINYINT(1) NOT NULL DEFAULT 0, `interest_rate` DOUBLE NOT NULL, `total` DOUBLE NOT NULL, `remaining` DOUBLE NOT NULL, `paid` DOUBLE NOT NULL DEFAULT 0, `down_payment` DOUBLE NOT NULL DEFAULT 0, `total_payments` INT NOT NULL, `paid_payments` INT NOT NULL DEFAULT 0, `missable_payments` INT NOT NULL, `missed_payments` INT NOT NULL DEFAULT 0, `total_missed_payments` INT NOT NULL DEFAULT 0, `next_payment` BIGINT NOT NULL DEFAULT 0, `last_payment` BIGINT NOT NULL DEFAULT 0, `last_missed_payment` BIGINT NULL, `creation` BIGINT NOT NULL, INDEX `idx_sid` (`sid`), INDEX `idx_type_asset` (`type`, `asset_identifier`), INDEX `idx_remaining` (`remaining`), INDEX `idx_defaulted` (`defaulted`), INDEX `idx_next_payment` (`next_payment`))",
+		nil,
+		function()
+			plsr.Database:Query(
+				"CREATE TABLE IF NOT EXISTS `loans_credit_scores` (`sid` BIGINT UNSIGNED PRIMARY KEY, `score` INT NOT NULL)",
+				nil,
+				function()
+					_loansTablesReady = true
+					if callback then
+						callback()
 					end
 				end
-				p:resolve(results)
-			else
-				p:resolve(false)
-			end
-		end)
-	return Citizen.Await(p)
-end)
-
-exports("LoansCreateVehicleLoan", function(targetSource, VIN, totalCost, downPayment, totalWeeks)
-	local char = exports['pulsar-characters']:FetchCharacterSource(targetSource)
-	if char then
-		local p = promise.new()
-		local remainingCost = totalCost - downPayment
-		local timeStamp = os.time()
-
-		local doc = {
-			Creation = timeStamp,
-			SID = char:GetData("SID"),
-			Type = "vehicle",
-			AssetIdentifier = VIN,
-			Defaulted = false,
-			InterestRate = _loanConfig.defaultInterestRate,
-			Total = totalCost,
-			Remaining = remainingCost,
-			Paid = downPayment,
-			DownPayment = downPayment,
-			TotalPayments = totalWeeks,
-			PaidPayments = 0,
-			MissablePayments = _loanConfig.missedPayments.limit,
-			MissedPayments = 0,
-			TotalMissedPayments = 0,
-			NextPayment = timeStamp + _loanConfig.paymentInterval,
-			LastPayment = 0,
-		}
-
-		exports.oxmysql:execute(
-			'INSERT INTO loans (Creation, SID, Type, AssetIdentifier, Defaulted, InterestRate, Total, Remaining, Paid, DownPayment, TotalPayments, PaidPayments, MissablePayments, MissedPayments, TotalMissedPayments, NextPayment, LastPayment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-			{ doc.Creation, doc.SID, doc.Type, doc.AssetIdentifier, doc.Defaulted and 1 or 0, doc.InterestRate, doc
-				.Total, doc.Remaining, doc.Paid, doc.DownPayment, doc.TotalPayments, doc.PaidPayments, doc
-				.MissablePayments, doc.MissedPayments, doc.TotalMissedPayments, doc.NextPayment, doc.LastPayment },
-			function(result)
-				local insertId = type(result) == "table" and result.insertId or result
-				if insertId and insertId > 0 then
-					p:resolve(true)
-				else
-					p:resolve(false)
-				end
-			end)
-
-		local res = Citizen.Await(p)
-		return res
-	end
-	return false
-end)
-
-exports("LoansCreatePropertyLoan", function(targetSource, propertyId, totalCost, downPayment, totalWeeks)
-	local char = exports['pulsar-characters']:FetchCharacterSource(targetSource)
-	if char then
-		local p = promise.new()
-		local remainingCost = totalCost - downPayment
-		local timeStamp = os.time()
-
-		local doc = {
-			Creation = timeStamp,
-			SID = char:GetData("SID"),
-			Type = "property",
-			AssetIdentifier = propertyId,
-			Defaulted = false,
-			InterestRate = _loanConfig.defaultInterestRate,
-			Total = totalCost,
-			Remaining = remainingCost,
-			Paid = downPayment,
-			DownPayment = downPayment,
-			TotalPayments = totalWeeks,
-			PaidPayments = 0,
-			MissablePayments = _loanConfig.missedPayments.limit,
-			MissedPayments = 0,
-			TotalMissedPayments = 0,
-			NextPayment = timeStamp + _loanConfig.paymentInterval,
-			LastPayment = 0,
-		}
-
-		exports.oxmysql:execute(
-			'INSERT INTO loans (Creation, SID, Type, AssetIdentifier, Defaulted, InterestRate, Total, Remaining, Paid, DownPayment, TotalPayments, PaidPayments, MissablePayments, MissedPayments, TotalMissedPayments, NextPayment, LastPayment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-			{ doc.Creation, doc.SID, doc.Type, doc.AssetIdentifier, doc.Defaulted and 1 or 0, doc.InterestRate, doc
-				.Total, doc.Remaining, doc.Paid, doc.DownPayment, doc.TotalPayments, doc.PaidPayments, doc
-				.MissablePayments, doc.MissedPayments, doc.TotalMissedPayments, doc.NextPayment, doc.LastPayment },
-			function(result)
-				local insertId = type(result) == "table" and result.insertId or result
-				if insertId and insertId > 0 then
-					p:resolve(true)
-				else
-					p:resolve(false)
-				end
-			end)
-
-		local res = Citizen.Await(p)
-		return res
-	end
-	return false
-end)
-
-exports("LoansMakePayment", function(source, loanId, inAdvanced, advancedPaymentCount)
-	local char = exports['pulsar-characters']:FetchCharacterSource(source)
-	if char then
-		local SID = char:GetData("SID")
-		local Account = char:GetData("BankAccount")
-		local loan = GetLoanByID(loanId, SID)
-		if loan then
-			local timeStamp = os.time()
-
-			local remainingPayments = loan.TotalPayments - loan.PaidPayments
-
-			local totalCreditGained = _creditScoreConfig.addition.loanPaymentMin
-			if loan.Total >= 50000 then
-				totalCreditGained += (math.floor(loan.Total / 50000) * 10)
-
-				if totalCreditGained > _creditScoreConfig.addition.loanPaymentMax then
-					totalCreditGained = _creditScoreConfig.addition.loanPaymentMax
-				end
-			end
-
-			if remainingPayments > 0 and loan.Remaining > 0 then
-				local interestMult = ((100 + loan.InterestRate) / 100)
-				local creditScoreIncrease = 0
-				local actuallyAdvancedPayments = 0
-				local payments = 1
-				if loan.MissedPayments > 0 then
-					payments = loan.MissedPayments
-
-					if payments > remainingPayments then
-						payments = remainingPayments
-					end
-
-					creditScoreIncrease += math.floor(((totalCreditGained / loan.TotalPayments) * payments) / 2)
-				else
-					local timeUntilDue = loan.NextPayment - timeStamp
-					local doneMinLoanLength = (timeStamp - loan.Creation) >= (60 * 60 * 24 * 5)
-
-					if timeUntilDue >= (_loanConfig.paymentInterval * 4) and not doneMinLoanLength then -- Can only pay 2 weeks in advanced or wait until loan is 1 week old
-						return {
-							success = false,
-							message = "Can't Pay That Far in Advanced - Hold Loan For At Least 5 Days",
-						}
-					end
-
-					local loanPaymentCreditIncrease = math.floor(totalCreditGained / loan.TotalPayments)
-					creditScoreIncrease += loanPaymentCreditIncrease
-
-					local earlyTime = loan.NextPayment - (_loanConfig.paymentInterval * 0.5)
-					if timeStamp <= earlyTime then -- Well Done You Are Early
-						creditScoreIncrease += 2
-					end
-				end
-
-				-- TODO: (maybe) Interest Going to the Government Account?
-
-				local dueAmount = math.ceil(((loan.Remaining / remainingPayments) * payments) * interestMult)
-				local chargeSuccess = exports['pulsar-finance']:BalanceCharge(Account, dueAmount, {
-					type = "loan",
-					title = "Loan Payment",
-					description = string.format(
-						"Loan Payment for %s %s",
-						GetLoanTypeName(loan.Type),
-						loan.AssetIdentifier
-					),
-					data = {
-						loan = loan._id,
-					},
-				})
-
-				if chargeSuccess then
-					local updateQuery
-					local loanPaidOff = false
-					local nowRemainingPayments = remainingPayments - payments
-					if nowRemainingPayments <= 0 then
-						loanPaidOff = true
-					end
-
-					if loan.Defaulted then -- Unseize Assets
-						if loan.Type == "vehicle" then
-							exports['pulsar-vehicles']:OwnedSeize(loan.AssetIdentifier, false)
-						elseif loan.Type == "property" then
-							exports['pulsar-properties']:Foreclose(loan.AssetIdentifier, false)
-						end
-					end
-
-					if loanPaidOff then
-						if loan.TotalMissedPayments <= 0 then
-							creditScoreIncrease += _creditScoreConfig.addition.completingLoanNoMissed
-						else
-							creditScoreIncrease += _creditScoreConfig.addition.completingLoan
-						end
-
-						updateQuery = {
-							["$set"] = {
-								LastPayment = timeStamp,
-								NextPayment = 0,
-								Remaining = 0,
-								Defaulted = false,
-							},
-							["$inc"] = {
-								Paid = dueAmount,
-								PaidPayments = payments,
-							},
-						}
-					else
-						updateQuery = {
-							["$set"] = {
-								LastPayment = timeStamp,
-								NextPayment = (loan.NextPayment + _loanConfig.paymentInterval),
-								Defaulted = false,
-							},
-							["$inc"] = {
-								Paid = dueAmount,
-								PaidPayments = payments,
-								Remaining = -dueAmount,
-							},
-						}
-
-						if loan.MissedPayments > 0 then
-							updateQuery["$set"]["MissedPayments"] = 0
-							updateQuery["$set"]["MissablePayments"] =
-								math.max(1, loan.MissablePayments - loan.MissedPayments)
-						end
-					end
-
-					local updated = UpdateLoanById(loan._id, updateQuery)
-
-					if creditScoreIncrease > 0 then
-						IncreaseCharacterCreditScore(SID, creditScoreIncrease)
-					end
-
-					if updated then
-						return {
-							success = true,
-							paidOff = loanPaidOff,
-							paymentAmount = dueAmount,
-							creditIncrease = creditScoreIncrease,
-						}
-					end
-				else
-					return {
-						success = false,
-						message = "Insufficient Funds in Checking Account",
-					}
-				end
-			end
+			)
 		end
+	)
+end
+
+function RowToLoan(row)
+	if row == nil then
+		return nil
 	end
 	return {
-		success = false,
+		_id = row.id,
+		SID = row.sid,
+		Type = row.type,
+		AssetIdentifier = row.asset_identifier,
+		Defaulted = row.defaulted == 1,
+		InterestRate = row.interest_rate,
+		Total = row.total,
+		Remaining = row.remaining,
+		Paid = row.paid,
+		DownPayment = row.down_payment,
+		TotalPayments = row.total_payments,
+		PaidPayments = row.paid_payments,
+		MissablePayments = row.missable_payments,
+		MissedPayments = row.missed_payments,
+		TotalMissedPayments = row.total_missed_payments,
+		NextPayment = row.next_payment,
+		LastPayment = row.last_payment,
+		LastMissedPayment = row.last_missed_payment,
+		Creation = row.creation,
 	}
-end)
+end
 
-exports("LoansHasRemainingPayments", function(assetType, assetId, checkAge)
-	-- checkAge (check if older than certain age (days))
-	local p = promise.new()
-	exports.oxmysql:execute('SELECT * FROM loans WHERE Type = ? AND AssetIdentifier = ?', { assetType, assetId },
-		function(results)
-			if results and #results > 0 then
-				local l = results[1]
+_LOANS = {
+	GetAllowedLoanAmount = function(self, stateId, type)
+		if not type then
+			type = "vehicle"
+		end
+		if config.CreditScore.allowedLoanMultipliers[type] then
+			local creditScore = GetCharacterCreditScore(stateId)
+
+			local creditMult = 0
+			for k, v in ipairs(config.CreditScore.allowedLoanMultipliers[type]) do
+				if creditScore >= v.value then
+					creditMult = v.multiplier
+				else
+					break
+				end
+			end
+
+			return {
+				creditScore = creditScore,
+				maxBorrowable = creditScore * creditMult,
+				limit = creditScore > config.Loans.maxActiveLoans.highCreditScoreThreshold and config.Loans.maxActiveLoans.highCreditScore or config.Loans.maxActiveLoans.default,
+			}
+		end
+	end,
+	GetDefaultInterestRate = function(self)
+		return config.Loans.defaultInterestRate
+	end,
+	GetPlayerLoans = function(self, stateId, type)
+		local p = promise.new()
+		EnsureLoansTables(function()
+			plsr.Database:Query(
+				"SELECT * FROM `loans` WHERE `sid` = ? AND `type` = ? AND (`remaining` > 0 OR (`remaining` = 0 AND `last_payment` >= ?))",
+				{ stateId, type, os.time() - (60 * 60 * 24 * 1) },
+				function(success, results)
+					if not success then
+						p:resolve(false)
+						return
+					end
+					local loans = {}
+					for _, row in ipairs(results) do
+						table.insert(loans, RowToLoan(row))
+					end
+					p:resolve(loans)
+				end
+			)
+		end)
+		return Citizen.Await(p)
+	end,
+	CreateVehicleLoan = function(self, targetSource, VIN, totalCost, downPayment, totalWeeks)
+		local char = plsr.Fetch:CharacterSource(targetSource)
+		if char then
+			local p = promise.new()
+			local remainingCost = totalCost - downPayment
+			local timeStamp = os.time()
+
+			EnsureLoansTables(function()
+				plsr.Database:Insert(
+					"INSERT INTO `loans` (`sid`, `type`, `asset_identifier`, `defaulted`, `interest_rate`, `total`, `remaining`, `paid`, `down_payment`, `total_payments`, `paid_payments`, `missable_payments`, `missed_payments`, `total_missed_payments`, `next_payment`, `last_payment`, `creation`) VALUES (?, 'vehicle', ?, 0, ?, ?, ?, ?, ?, ?, 0, ?, 0, 0, ?, 0, ?)",
+					{
+						char:GetData("SID"),
+						VIN,
+						config.Loans.defaultInterestRate,
+						totalCost,
+						remainingCost,
+						downPayment,
+						downPayment,
+						totalWeeks,
+						config.Loans.missedPayments.limit,
+						timeStamp + config.Loans.paymentInterval,
+						timeStamp,
+					},
+					function(success, newId)
+						p:resolve(success and newId ~= nil)
+					end
+				)
+			end)
+
+			local res = Citizen.Await(p)
+			return res
+		end
+		return false
+	end,
+	CreatePropertyLoan = function(self, targetSource, propertyId, totalCost, downPayment, totalWeeks)
+		local char = plsr.Fetch:CharacterSource(targetSource)
+		if char then
+			local p = promise.new()
+			local remainingCost = totalCost - downPayment
+			local timeStamp = os.time()
+
+			EnsureLoansTables(function()
+				plsr.Database:Insert(
+					"INSERT INTO `loans` (`sid`, `type`, `asset_identifier`, `defaulted`, `interest_rate`, `total`, `remaining`, `paid`, `down_payment`, `total_payments`, `paid_payments`, `missable_payments`, `missed_payments`, `total_missed_payments`, `next_payment`, `last_payment`, `creation`) VALUES (?, 'property', ?, 0, ?, ?, ?, ?, ?, ?, 0, ?, 0, 0, ?, 0, ?)",
+					{
+						char:GetData("SID"),
+						propertyId,
+						config.Loans.defaultInterestRate,
+						totalCost,
+						remainingCost,
+						downPayment,
+						downPayment,
+						totalWeeks,
+						config.Loans.missedPayments.limit,
+						timeStamp + config.Loans.paymentInterval,
+						timeStamp,
+					},
+					function(success, newId)
+						p:resolve(success and newId ~= nil)
+					end
+				)
+			end)
+
+			local res = Citizen.Await(p)
+			return res
+		end
+		return false
+	end,
+	MakePayment = function(self, source, loanId, inAdvanced, advancedPaymentCount)
+		local char = plsr.Fetch:CharacterSource(source)
+		if char then
+			local SID = char:GetData("SID")
+			local Account = char:GetData("BankAccount")
+			local loan = GetLoanByID(loanId, SID)
+			if loan then
+				local timeStamp = os.time()
+
+				local remainingPayments = loan.TotalPayments - loan.PaidPayments
+
+				local totalCreditGained = config.CreditScore.addition.loanPaymentMin
+				if loan.Total >= config.Loans.largeLoanCreditBonus.perAmount then
+					totalCreditGained += (math.floor(loan.Total / config.Loans.largeLoanCreditBonus.perAmount) * config.Loans.largeLoanCreditBonus.bonus)
+
+					if totalCreditGained > config.CreditScore.addition.loanPaymentMax then
+						totalCreditGained = config.CreditScore.addition.loanPaymentMax
+					end
+				end
+
+				if remainingPayments > 0 and loan.Remaining > 0 then
+					local interestMult = ((100 + loan.InterestRate) / 100)
+					local creditScoreIncrease = 0
+					local actuallyAdvancedPayments = 0
+					local payments = 1
+					if loan.MissedPayments > 0 then
+						payments = loan.MissedPayments
+
+						if payments > remainingPayments then
+							payments = remainingPayments
+						end
+
+						creditScoreIncrease += math.floor(((totalCreditGained / loan.TotalPayments) * payments) / 2)
+					else
+						local timeUntilDue = loan.NextPayment - timeStamp
+						local doneMinLoanLength = (timeStamp - loan.Creation) >= (60 * 60 * 24 * config.Loans.minAgeForEarlyPaymentDays)
+
+						if timeUntilDue >= (config.Loans.paymentInterval * 4) and not doneMinLoanLength then -- Can only pay 2 weeks in advanced or wait until loan is 1 week old
+							return {
+								success = false,
+								message = "Can't Pay That Far in Advanced - Hold Loan For At Least 5 Days",
+							}
+						end
+
+						local loanPaymentCreditIncrease = math.floor(totalCreditGained / loan.TotalPayments)
+						creditScoreIncrease += loanPaymentCreditIncrease
+
+						local earlyTime = loan.NextPayment - (config.Loans.paymentInterval * 0.5)
+						if timeStamp <= earlyTime then -- Well Done You Are Early
+							creditScoreIncrease += config.Loans.earlyPaymentCreditBonus
+						end
+					end
+
+					-- TODO: (maybe) Interest Going to the Government Account?
+
+					local dueAmount = math.ceil(((loan.Remaining / remainingPayments) * payments) * interestMult)
+					local chargeSuccess = plsr.Banking.Balance:Charge(Account, dueAmount, {
+						type = "loan",
+						title = "Loan Payment",
+						description = string.format(
+							"Loan Payment for %s %s",
+							GetLoanTypeName(loan.Type),
+							loan.AssetIdentifier
+						),
+						data = {
+							loan = loan._id,
+						},
+					})
+
+					if chargeSuccess then
+						local loanPaidOff = false
+						local nowRemainingPayments = remainingPayments - payments
+						if nowRemainingPayments <= 0 then
+							loanPaidOff = true
+						end
+
+						if loan.Defaulted then -- Unseize Assets
+							if loan.Type == "vehicle" then
+								plsr.Vehicles.Owned:Seize(loan.AssetIdentifier, false)
+							elseif loan.Type == "property" then
+								plsr.Properties.Commerce:Foreclose(loan.AssetIdentifier, false)
+							end
+						end
+
+						local updated
+						if loanPaidOff then
+							if loan.TotalMissedPayments <= 0 then
+								creditScoreIncrease += config.CreditScore.addition.completingLoanNoMissed
+							else
+								creditScoreIncrease += config.CreditScore.addition.completingLoan
+							end
+
+							updated = UpdateLoanById(
+								loan._id,
+								"UPDATE `loans` SET `last_payment` = ?, `next_payment` = 0, `remaining` = 0, `defaulted` = 0, `paid` = `paid` + ?, `paid_payments` = `paid_payments` + ? WHERE `id` = ?",
+								{ timeStamp, dueAmount, payments }
+							)
+						else
+							local extraSet = ""
+							if loan.MissedPayments > 0 then
+								extraSet = ", `missed_payments` = 0, `missable_payments` = "
+									.. tostring(math.max(1, loan.MissablePayments - loan.MissedPayments))
+							end
+
+							updated = UpdateLoanById(
+								loan._id,
+								"UPDATE `loans` SET `last_payment` = ?, `next_payment` = ?, `defaulted` = 0, `paid` = `paid` + ?, `paid_payments` = `paid_payments` + ?, `remaining` = `remaining` - ?"
+									.. extraSet
+									.. " WHERE `id` = ?",
+								{ timeStamp, loan.NextPayment + config.Loans.paymentInterval, dueAmount, payments, dueAmount }
+							)
+						end
+
+						if creditScoreIncrease > 0 then
+							IncreaseCharacterCreditScore(SID, creditScoreIncrease)
+						end
+
+						if updated then
+							return {
+								success = true,
+								paidOff = loanPaidOff,
+								paymentAmount = dueAmount,
+								creditIncrease = creditScoreIncrease,
+							}
+						end
+					else
+						return {
+							success = false,
+							message = "Insufficient Funds in Checking Account",
+						}
+					end
+				end
+			end
+		end
+		return {
+			success = false,
+		}
+	end,
+	HasRemainingPayments = function(self, assetType, assetId, checkAge)
+		-- checkAge (check if older than certain age (days))
+		local p = promise.new()
+		EnsureLoansTables(function()
+			plsr.Database:Single("SELECT * FROM `loans` WHERE `type` = ? AND `asset_identifier` = ?", { assetType, assetId }, function(success, row)
+				if not success or row == nil then
+					p:resolve(false)
+					return
+				end
+
+				local l = RowToLoan(row)
 
 				if checkAge and l.Creation >= (os.time() - (60 * 60 * 24 * checkAge)) then
 					p:resolve(true)
@@ -317,117 +329,79 @@ exports("LoansHasRemainingPayments", function(assetType, assetId, checkAge)
 				else
 					p:resolve(false)
 				end
-			else
-				p:resolve(false)
-			end
+			end)
 		end)
 
-	return Citizen.Await(p)
-end)
+		return Citizen.Await(p)
+	end,
+	Credit = {
+		Get = function(self, stateId)
+			return GetCharacterCreditScore(stateId)
+		end,
+		Set = function(self, stateId, newVal)
+			return SetCharacterCreditScore(stateId, newVal)
+		end,
+		Increase = function(self, stateId, increase)
+			return IncreaseCharacterCreditScore(stateId, increase)
+		end,
+		Decrease = function(self, stateId, decrease)
+			return DecreaseCharacterCreditScore(stateId, decrease)
+		end,
+	},
+	HasBeenDefaulted = function(self, assetType, assetId)
+		local p = promise.new()
 
-exports("LoansCreditGet", function(stateId)
-	return GetCharacterCreditScore(stateId)
-end)
-
-exports("LoansCreditSet", function(stateId, newVal)
-	return SetCharacterCreditScore(stateId, newVal)
-end)
-
-exports("LoansCreditIncrease", function(stateId, increase)
-	return IncreaseCharacterCreditScore(stateId, increase)
-end)
-
-exports("LoansCreditDecrease", function(stateId, decrease)
-	return DecreaseCharacterCreditScore(stateId, decrease)
-end)
-
-exports("LoansHasBeenDefaulted", function(assetType, assetId)
-	local p = promise.new()
-
-	exports.oxmysql:execute('SELECT * FROM loans WHERE Type = ? AND AssetIdentifier = ? AND Defaulted = ?',
-		{ assetType, assetId, 1 }, function(results)
-			if results and #results > 0 then
-				local l = results[1]
-
-				p:resolve(l)
-			else
-				p:resolve(false)
-			end
+		EnsureLoansTables(function()
+			plsr.Database:Single(
+				"SELECT * FROM `loans` WHERE `type` = ? AND `asset_identifier` = ? AND `defaulted` = 1",
+				{ assetType, assetId },
+				function(success, row)
+					if success and row ~= nil then
+						p:resolve(RowToLoan(row))
+					else
+						p:resolve(false)
+					end
+				end
+			)
 		end)
 
-	return Citizen.Await(p)
+		return Citizen.Await(p)
+	end,
+}
+
+AddEventHandler("Proxy:Shared:RegisterReady", function()
+	exports["pulsar_core"]:RegisterComponent("Loans", _LOANS)
 end)
 
 function GetLoanByID(loanId, stateId)
 	local p = promise.new()
-	exports.oxmysql:execute('SELECT * FROM loans WHERE id = ? AND SID = ?', { loanId, stateId }, function(results)
-		if results and #results > 0 then
-			local loan = results[1]
-			if loan.paymentHistory then
-				loan.paymentHistory = json.decode(loan.paymentHistory)
+	EnsureLoansTables(function()
+		plsr.Database:Single("SELECT * FROM `loans` WHERE `id` = ? AND `sid` = ?", { loanId, stateId }, function(success, row)
+			if success and row ~= nil then
+				p:resolve(RowToLoan(row))
+			else
+				p:resolve(false)
 			end
-			if loan.terms then
-				loan.terms = json.decode(loan.terms)
-			end
-			loan.Defaulted = loan.Defaulted == 1
-			p:resolve(loan)
-		else
-			p:resolve(false)
-		end
+		end)
 	end)
 
 	local res = Citizen.Await(p)
 	return res
 end
 
-function UpdateLoanById(loanId, update)
+-- sql must end with "WHERE `id` = ?"; params excludes that final loanId (appended here).
+function UpdateLoanById(loanId, sql, params)
 	local p = promise.new()
+	local fullParams = { table.unpack(params) }
+	table.insert(fullParams, loanId)
 
-	local setParts = {}
-	local incParts = {}
-	local values = {}
-
-	if update["$set"] then
-		for k, v in pairs(update["$set"]) do
-			if k == "Defaulted" then
-				table.insert(setParts, k .. " = ?")
-				table.insert(values, v and 1 or 0)
-			else
-				table.insert(setParts, k .. " = ?")
-				table.insert(values, v)
-			end
+	plsr.Database:Update(sql, fullParams, function(success, updated)
+		if success and updated > 0 then
+			p:resolve(true)
+		else
+			p:resolve(false)
 		end
-	end
-
-	if update["$inc"] then
-		for k, v in pairs(update["$inc"]) do
-			table.insert(incParts, k .. " = " .. k .. " + ?")
-			table.insert(values, v)
-		end
-	end
-
-	local updateParts = {}
-	for _, part in ipairs(setParts) do
-		table.insert(updateParts, part)
-	end
-	for _, part in ipairs(incParts) do
-		table.insert(updateParts, part)
-	end
-
-	if #updateParts > 0 then
-		local query = "UPDATE loans SET " .. table.concat(updateParts, ", ") .. " WHERE id = ?"
-		table.insert(values, loanId)
-
-		exports.oxmysql:execute(query, values, function(affectedRows)
-			if affectedRows and affectedRows > 0 then
-				p:resolve(true)
-			else
-				p:resolve(false)
-			end
-		end)
-	else
-		p:resolve(false)
-	end
+	end)
 
 	local res = Citizen.Await(p)
 	return res

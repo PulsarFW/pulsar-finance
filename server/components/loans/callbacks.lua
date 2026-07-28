@@ -1,20 +1,18 @@
 function GetCharactersLoans(stateId)
     local p = promise.new()
 
-    exports.oxmysql:execute('SELECT * FROM loans WHERE SID = ?', { stateId }, function(results)
-        if results and #results > 0 then
-            for k, v in ipairs(results) do
-                if v.paymentHistory then
-                    v.paymentHistory = json.decode(v.paymentHistory)
+    EnsureLoansTables(function()
+        plsr.Database:Query("SELECT * FROM `loans` WHERE `sid` = ?", { stateId }, function(success, results)
+            if success and #results > 0 then
+                local loans = {}
+                for _, row in ipairs(results) do
+                    table.insert(loans, RowToLoan(row))
                 end
-                if v.terms then
-                    v.terms = json.decode(v.terms)
-                end
+                p:resolve(loans)
+            else
+                p:resolve({})
             end
-            p:resolve(results)
-        else
-            p:resolve({})
-        end
+        end)
     end)
 
     local res = Citizen.Await(p)
@@ -22,8 +20,8 @@ function GetCharactersLoans(stateId)
 end
 
 function RegisterLoanCallbacks()
-    exports["pulsar-core"]:RegisterServerCallback('Loans:GetLoans', function(source, data, cb)
-        local char = exports['pulsar-characters']:FetchCharacterSource(source)
+    plsr.Callbacks:RegisterServerCallback('Loans:GetLoans', function(source, data, cb)
+        local char = plsr.Fetch:CharacterSource(source)
         if char then
             local SID = char:GetData('SID')
             local loans = GetCharactersLoans(SID)
@@ -36,11 +34,11 @@ function RegisterLoanCallbacks()
         end
     end)
 
-    exports["pulsar-core"]:RegisterServerCallback('Loans:Payment', function(source, data, cb)
-        local char = exports['pulsar-characters']:FetchCharacterSource(source)
+    plsr.Callbacks:RegisterServerCallback('Loans:Payment', function(source, data, cb)
+        local char = plsr.Fetch:CharacterSource(source)
         if char and data and data.loan then
             local SID = char:GetData('SID')
-            local res = exports['pulsar-finance']:LoansMakePayment(source, data.loan, data.paymentAhead, data.weeks)
+            local res = plsr.Loans:MakePayment(source, data.loan, data.paymentAhead, data.weeks)
             if res and res.success then
                 cb(res, {
                     loans = GetCharactersLoans(SID),

@@ -1,23 +1,35 @@
-fx_version("cerulean")
-game("gta5")
-lua54("yes")
-version "1.0.2"
-client_script("@pulsar-core/exports/cl_error.lua")
-client_script("@pulsar-pwnzor/client/check.lua")
-server_script("@oxmysql/lib/MySQL.lua")
+fx_version 'cerulean'
+game 'gta5'
+
+name 'Pulsar Finance'
+description 'Banking with accounts, ATM, loan payments, and crypto trading'
+author 'Artmines - maintained for Pulsar Framework'
+url 'https://pulsarframe.work'
+version 'v1.0.0'
+
+version_check 'yes'
+github 'https://github.com/PulsarFW/pulsar_finance'
+
+client_script '@pulsar_core/components/cl_error.lua'
+shared_script '@pulsar_core/core/sh_pulsar.lua'
+client_script '@pulsar_pwnzor/client/check.lua'
+server_script '@oxmysql/lib/MySQL.lua'
 
 client_scripts({
-  "client/**/*.lua",
+	'data/**/*.lua',
+	'client/**/*.lua',
 })
 
 server_scripts({
-  "server/**/*.lua",
+	'data/**/*.lua',
+	'server/**/*.lua',
 })
 
-shared_scripts({
-  "shared/**/*.lua",
+files({ 
+	'ui/dist/index.html',
+	'ui/dist/assets/*', 
+	'config/shared.lua' 
 })
 
-ui_page("ui/dist/index.html")
-
-files({ "ui/dist/index.html", "ui/dist/*.js", "ui/dist/*.png", "ui/dist/*.webp" })
+ui_page 'ui/dist/index.html'
+lua54 'yes'

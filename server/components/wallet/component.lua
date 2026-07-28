@@ -1,38 +1,53 @@
-exports("WalletGet", function(source)
-	return exports.ox_inventory:GetItemCount(source, 'money') or 0
-end)
-
-exports("WalletHas", function(source, amount)
-	if amount > 0 then
-		local currentCash = exports.ox_inventory:GetItemCount(source, 'money') or 0
-		return currentCash >= amount
-	end
-	return false
-end)
-
-exports("WalletModify", function(source, amount, skipNotify)
-	local currentCash = exports.ox_inventory:GetItemCount(source, 'money') or 0
-	local newCashBalance = math.floor(currentCash + amount)
-
-	if newCashBalance >= 0 then
-		if amount > 0 then
-			exports.ox_inventory:AddItem(source, 'money', amount)
-		elseif amount < 0 then
-			exports.ox_inventory:RemoveItem(source, 'money', math.abs(amount))
+_WALLET = {
+	Get = function(self, source)
+		local char = plsr.Fetch:CharacterSource(source)
+		if char then
+			return char:GetData("Cash") or 0
 		end
-
-		if not skipNotify then
-			if amount < 0 then
-				exports['pulsar-hud']:Notification(source, "info",
-					string.format("You Paid $%s In Cash", formatNumberToCurrency(math.floor(math.abs(amount))))
-				)
-			else
-				exports['pulsar-hud']:Notification(source, "success",
-					string.format("You Received $%s In Cash", formatNumberToCurrency(math.floor(amount)))
-				)
+		return 0
+	end,
+	Has = function(self, source, amount)
+		local char = plsr.Fetch:CharacterSource(source)
+		if char and amount > 0 then
+			local currentCash = char:GetData("Cash") or 0
+			if currentCash >= amount then
+				return true
 			end
 		end
-		return newCashBalance
-	end
-	return false
+		return false
+	end,
+	Modify = function(self, source, amount, skipNotify)
+		local char = plsr.Fetch:CharacterSource(source)
+		if char then
+			local currentCash = char:GetData("Cash") or 0
+			local newCashBalance = math.floor(currentCash + amount)
+			if newCashBalance >= 0 then
+				char:SetData("Cash", newCashBalance)
+
+				if not skipNotify then
+					if amount < 0 then
+						plsr.Execute:Client(
+							source,
+							"Notification",
+							"Info",
+							string.format("You Paid $%s In Cash", formatNumberToCurrency(math.floor(math.abs(amount))))
+						)
+					else
+						plsr.Execute:Client(
+							source,
+							"Notification",
+							"Success",
+							string.format("You Received $%s In Cash", formatNumberToCurrency(math.floor(amount)))
+						)
+					end
+				end
+				return newCashBalance
+			end
+		end
+		return false
+	end,
+}
+
+AddEventHandler("Proxy:Shared:RegisterReady", function()
+	exports["pulsar_core"]:RegisterComponent("Wallet", _WALLET)
 end)

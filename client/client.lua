@@ -1,5 +1,18 @@
 local inBank = true
 
+-- Maps a bank branch's _bankBranches key (config/shared.lua's Locations.branches) to a real
+-- brand for SET_APP — the front-end's brand switch always supported
+-- fleeca/maze/blaineco/ud, it just never received anything but "fleeca"
+-- before. ATM stays hardcoded to fleeca (atms.lua's zones carry no
+-- per-location brand data to key off).
+function GetBranchBrand(branchKey)
+	if not branchKey then return "fleeca" end
+	if string.find(branchKey, "^mazebank_") then return "maze" end
+	if string.find(branchKey, "^savings_") then return "blaineco" end
+	if string.find(branchKey, "^lombank_") then return "ud" end
+	return "fleeca"
+end
+
 function TableLength(tbl)
 	local c = 0
 	for k, v in pairs(tbl) do
@@ -8,112 +21,127 @@ function TableLength(tbl)
 	return c
 end
 
-AddEventHandler('onClientResourceStart', function(resource)
-	if resource == GetCurrentResourceName() then
-		Wait(1000)
+CreateThread(function()
 		RunBankingStartup()
 
-		exports['pulsar-pedinteraction']:Add("paycheck", `ig_bankman`, vector3(253.193, 216.434, 105.282), 339.578, 25.0,
+		plsr.PedInteraction:Add("paycheck", `ig_bankman`, vector3(253.193, 216.434, 105.282), 339.578, 25.0, {
+			{
+				icon = "hand-holding-dollar",
+				text = "Get Paycheck",
+				event = "Finance:Client:Paycheck",
+				isEnabled = function()
+					return TableLength(plsr.State.character.Salary or {}) > 0
+				end,
+			},
+		}, "money-check-dollar")
+
+		plsr.Targeting.Zones:AddBox(
+			"paycheck-zone",
+			"money-check-dollar",
+			vector3(254.53, 216.58, 106.28),
+			0.8,
+			3.6,
+			{
+				name = "paycheck",
+				heading = 340,
+				--debugPoly=true,
+				minZ = 105.28,
+				maxZ = 108.28,
+			},
 			{
 				{
-					icon = "fas fa-hand-holding-dollar",
+					icon = "hand-holding-dollar",
 					text = "Get Paycheck",
 					event = "Finance:Client:Paycheck",
 					isEnabled = function()
-						return TableLength(LocalPlayer.state.Character:GetData("Salary") or {}) > 0
+						return TableLength(plsr.State.character.Salary or {}) > 0
 					end,
 				},
-			}, "money-check-dollar")
+			},
+			3.0,
+			true
+		)
 
-		-- exports.ox_target:addBoxZone({ -- not sure why??
-		-- 	id = "paycheck",
-		-- 	coords = vector3(254.53, 216.58, 106.28),
-		-- 	size = vector3(0.8, 3.6, 3.0),
-		-- 	rotation = 340,
-		-- 	debug = false,
-		-- 	minZ = 105.28,
-		-- 	maxZ = 108.28,
-		-- 	options = {
-		-- 		{
-		-- 			icon = "fas fa-hand-holding-dollar",
-		-- 			label = "Get Paycheck",
-		-- 			event = "Finance:Client:Paycheck",
-		-- 			canInteract = function()
-		-- 				return TableLength(LocalPlayer.state.Character:GetData("Salary") or {}) > 0
-		-- 			end,
-		-- 		},
-		-- 	}
-		-- })
+		plsr.PedInteraction:Add("paycheck-2", `ig_bankman`, vector3(17.568, -927.223, 28.903), 111.958, 25.0, {
+			{
+				icon = "hand-holding-dollar",
+				text = "Get Paycheck",
+				event = "Finance:Client:Paycheck",
+				isEnabled = function()
+					return TableLength(plsr.State.character.Salary or {}) > 0
+				end,
+			},
+		}, "money-check-dollar")
 
-		exports['pulsar-pedinteraction']:Add("paycheck-2", `ig_bankman`, vector3(17.568, -927.223, 28.903), 111.958,
-			25.0, {
+		plsr.Targeting.Zones:AddBox(
+			"paycheck-zone-2",
+			"money-check-dollar",
+			vector3(16.72, -927.74, 29.9),
+			2.0,
+			1.0,
+			{
+				name = "paycheck",
+				heading = 15,
+				--debugPoly=true,
+				minZ = 29.7,
+				maxZ = 31.3,
+			},
+			{
 				{
-					icon = "fas fa-hand-holding-dollar",
+					icon = "hand-holding-dollar",
 					text = "Get Paycheck",
 					event = "Finance:Client:Paycheck",
 					isEnabled = function()
-						return TableLength(LocalPlayer.state.Character:GetData("Salary") or {}) > 0
+						return TableLength(plsr.State.character.Salary or {}) > 0
 					end,
 				},
-			}, "money-check-dollar")
+			},
+			3.0,
+			true
+		)
 
-		-- exports.ox_target:addBoxZone({ -- not sure why??
-		-- 	id = "paycheck-2",
-		-- 	coords = vector3(16.72, -927.74, 29.9),
-		-- 	size = vector3(2.0, 1.0, 1.6),
-		-- 	rotation = 15,
-		-- 	debug = false,
-		-- 	minZ = 29.7,
-		-- 	maxZ = 31.3,
-		-- 	options = {
-		-- 		{
-		-- 			icon = "fas fa-hand-holding-dollar",
-		-- 			label = "Get Paycheck",
-		-- 			event = "Finance:Client:Paycheck",
-		-- 			canInteract = function()
-		-- 				return TableLength(LocalPlayer.state.Character:GetData("Salary") or {}) > 0
-		-- 			end,
-		-- 		},
-		-- 	}
-		-- })
+		plsr.PedInteraction:Add("paycheck-3", `ig_bankman`, vector3(-108.997, 6471.589, 30.634), 224.685, 25.0, {
+			{
+				icon = "hand-holding-dollar",
+				text = "Get Paycheck",
+				event = "Finance:Client:Paycheck",
+				isEnabled = function()
+					return TableLength(plsr.State.character.Salary or {}) > 0
+				end,
+			},
+		}, "money-check-dollar")
 
-		exports['pulsar-pedinteraction']:Add("paycheck-3", `ig_bankman`, vector3(-108.997, 6471.589, 30.634), 224.685,
-			25.0, {
+		plsr.Targeting.Zones:AddBox(
+			"paycheck-zone-3",
+			"money-check-dollar",
+			vector3(-109.04, 6471.68, 31.63),
+			1.6,
+			1.2,
+			{
+				name = "paycheck",
+				heading = 315,
+				--debugPoly=true,
+				minZ = 28.83,
+				maxZ = 32.83,
+			},
+			{
 				{
-					icon = "fas fa-hand-holding-dollar",
+					icon = "hand-holding-dollar",
 					text = "Get Paycheck",
 					event = "Finance:Client:Paycheck",
 					isEnabled = function()
-						return TableLength(LocalPlayer.state.Character:GetData("Salary") or {}) > 0
+						return TableLength(plsr.State.character.Salary or {}) > 0
 					end,
 				},
-			}, "money-check-dollar")
+			},
+			3.0,
+			true
+		)
 
-		-- exports.ox_target:addBoxZone({ -- not sure why??
-		-- 	id = "paycheck-3",
-		-- 	coords = vector3(-109.04, 6471.68, 31.63),
-		-- 	size = vector3(1.6, 1.2, 4.0),
-		-- 	rotation = 315,
-		-- 	debug = false,
-		-- 	minZ = 28.83,
-		-- 	maxZ = 32.83,
-		-- 	options = {
-		-- 		{
-		-- 			icon = "fas fa-hand-holding-dollar",
-		-- 			label = "Get Paycheck",
-		-- 			event = "Finance:Client:Paycheck",
-		-- 			canInteract = function()
-		-- 				return TableLength(LocalPlayer.state.Character:GetData("Salary") or {}) > 0
-		-- 			end,
-		-- 		},
-		-- 	}
-		-- })
-
-		exports['pulsar-hud']:InteractionRegisterMenu("cash", "Show Cash", "dollar-sign", function()
+		plsr.Interaction:RegisterMenu("cash", "Show Cash", "dollar-sign", function()
 			TriggerServerEvent("Wallet:ShowCash")
-			exports['pulsar-hud']:InteractionHide()
+			plsr.Interaction:Hide()
 		end)
-	end
 end)
 
 RegisterNetEvent("UI:Client:Reset", function()
@@ -125,13 +153,11 @@ RegisterNetEvent("UI:Client:Reset", function()
 end)
 
 AddEventHandler("Finance:Client:Paycheck", function(entity, data)
-	exports["pulsar-core"]:ServerCallback("Finance:Paycheck", {}, function(s)
+	plsr.Callbacks:ServerCallback("Finance:Paycheck", {}, function(s)
 		if s.total > 0 then
-			exports["pulsar-hud"]:Notification("success",
-				string.format("You Received $%s For %s Total Minutes Worked", s.total,
-					s.minutes))
+			plsr.Notification:Success(string.format("You Received $%s For %s Total Minutes Worked", s.total, s.minutes))
 		else
-			exports["pulsar-hud"]:Notification("error", "You Need To Work To Earn A Paycheck")
+			plsr.Notification:Error("You Need To Work To Earn A Paycheck")
 		end
 	end)
 end)
@@ -143,7 +169,7 @@ RegisterNUICallback("Close", function(data, cb)
 	})
 
 	if not inBank then
-		exports['pulsar-hud']:Progress({
+		plsr.Progress:Progress({
 			name = "atm_removing",
 			duration = 1500,
 			label = "Removing Card",
@@ -168,13 +194,13 @@ RegisterNUICallback("Close", function(data, cb)
 	inBank = false
 end)
 
-RegisterNetEvent("Finance:Client:OpenUI", function()
+RegisterNetEvent("Finance:Client:OpenUI", function(branchKey)
 	inBank = true
 	SetNuiFocus(true, true)
 	SendNUIMessage({
 		type = "SET_APP",
 		data = {
-			brand = "fleeca",
+			brand = GetBranchBrand(branchKey),
 			app = "BANK",
 		},
 	})
@@ -187,11 +213,11 @@ AddEventHandler("Characters:Client:Updated", function(key)
 			data = {
 				type = "character",
 				data = {
-					ID = LocalPlayer.state.Character:GetData("ID"),
-					SID = LocalPlayer.state.Character:GetData("SID"),
-					First = LocalPlayer.state.Character:GetData("First"),
-					Last = LocalPlayer.state.Character:GetData("Last"),
-					Cash = LocalPlayer.state.Character:GetData("Cash"),
+					ID = plsr.State.character.ID,
+					SID = plsr.State.character.SID,
+					First = plsr.State.character.First,
+					Last = plsr.State.character.Last,
+					Cash = plsr.State.character.Cash,
 				},
 			},
 		})
@@ -204,11 +230,11 @@ AddEventHandler("Characters:Client:Spawn", function()
 		data = {
 			type = "character",
 			data = {
-				ID = LocalPlayer.state.Character:GetData("ID"),
-				SID = LocalPlayer.state.Character:GetData("SID"),
-				First = LocalPlayer.state.Character:GetData("First"),
-				Last = LocalPlayer.state.Character:GetData("Last"),
-				Cash = LocalPlayer.state.Character:GetData("Cash"),
+				ID = plsr.State.character.ID,
+				SID = plsr.State.character.SID,
+				First = plsr.State.character.First,
+				Last = plsr.State.character.Last,
+				Cash = plsr.State.character.Cash,
 			},
 		},
 	})
@@ -216,5 +242,5 @@ end)
 
 RegisterNetEvent("Finance:Client:HandOffCash", function()
 	loadAnimDict("mp_safehouselost@")
-	TaskPlayAnim(LocalPlayer.state.ped, "mp_safehouselost@", "package_dropoff", 8.0, 1.0, -1, 48, 0, 0, 0, 0)
+	TaskPlayAnim(PlayerPedId(), "mp_safehouselost@", "package_dropoff", 8.0, 1.0, -1, 48, 0, 0, 0, 0)
 end)
