@@ -22,7 +22,7 @@ function RunBankingStartup()
 			BILL = "STATE_ACCOUNT_BILL",
 		}
 
-		stateAccount = CreateBankAccount(
+		CreateBankAccount(
 			"organization",
 			"government",
 			500000, -- Government Should Probably Have Some Starter Money
@@ -41,6 +41,12 @@ function RunBankingStartup()
 				},
 			}
 		)
+
+		-- CreateBankAccount only returns the account number, not the row; re-fetch for stateAccount.balance below
+		stateAccount = MySQL.single.await("SELECT * FROM bank_accounts WHERE type = ? AND account = ?", {
+			"organization",
+			100000,
+		})
 	end
 
 	CreateOrganizationBankAccounts()
