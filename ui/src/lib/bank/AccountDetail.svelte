@@ -59,10 +59,6 @@
 		financeState.accounts = financeState.accounts.map((a) => (a.Account === id ? { ...a, ...patch } : a));
 	}
 
-	function adjustCash(delta: number) {
-		if (financeState.character) financeState.character = { ...financeState.character, Cash: financeState.character.Cash + delta };
-	}
-
 	function prependTx(tx: Transaction) {
 		transactions = [tx, ...transactions];
 	}
@@ -70,14 +66,12 @@
 	function onDeposited(amount: number, balance: number, description: string) {
 		if (!account) return;
 		patchAccount({ Balance: balance });
-		adjustCash(-amount);
 		prependTx({ Amount: amount, Type: 'deposit', TransactionAccount: false, Title: 'Cash Deposit', Account: account.Account, Timestamp: Date.now() / 1000, Description: description });
 	}
 
 	function onWithdrawn(amount: number, balance: number, description: string) {
 		if (!account) return;
 		patchAccount({ Balance: balance });
-		adjustCash(amount);
 		prependTx({ Amount: amount, Type: 'withdraw', TransactionAccount: false, Title: 'Cash Withdrawal', Account: account.Account, Timestamp: Date.now() / 1000, Description: description });
 	}
 
@@ -94,9 +88,6 @@
 			Timestamp: Date.now() / 1000,
 			Description: `Transfer To ${byStateId ? 'State ID' : 'Account'}: ${target}.${suffix}`,
 		});
-		// If the target is another of the player's own accounts already in the
-		// local list, reflect the incoming side too (a cross-player transfer's
-		// target account isn't in our list at all, nothing to patch there)
 		if (!byStateId) {
 			const targetAccount = financeState.accounts.find((a) => String(a.Account) === target);
 			if (targetAccount) financeState.accounts = financeState.accounts.map((a) => (a.Account === targetAccount.Account ? { ...a, Balance: a.Balance + amount } : a));
