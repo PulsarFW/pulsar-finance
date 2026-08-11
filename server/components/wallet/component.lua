@@ -23,6 +23,7 @@ _WALLET = {
 			local newCashBalance = math.floor(currentCash + amount)
 			if newCashBalance >= 0 then
 				char:SetData("Cash", newCashBalance)
+				TriggerEvent("Wallet:Shared:CashModified", char:GetData("SID"), newCashBalance - currentCash)
 
 				if not skipNotify then
 					if amount < 0 then
